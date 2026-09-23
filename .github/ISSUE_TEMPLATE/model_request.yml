@@ -1,0 +1,19 @@
+name: Model Request
+description: 申请支持新的大模型型号或上游服务商协议
+title: "[Model]: "
+labels: ["enhancement", "model-request"]
+body:
+  - type: input
+    id: model_name
+    attributes:
+      label: 申请适配的模型型号
+      placeholder: 如 deepseek-reasoner, o3-mini, claude-3-7-sonnet
+    validations:
+      required: true
+  - type: textarea
+    id: official_doc
+    attributes:
+      label: 官方 API 文档链接与说明
+      placeholder: 官方文档 URL、上下文长度及定价参考...
+    validations:
+      required: true

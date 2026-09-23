@@ -1,0 +1,38 @@
+name: Bug Report
+description: 提交接口报错、流式中断或网关异常问题
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈问题！在提交前请先确认上游模型 API 是否自身存在服务降级。
+  - type: input
+    id: model
+    attributes:
+      label: 涉及的大模型
+      placeholder: 如 gpt-4o, claude-3-5-sonnet, deepseek-chat
+    validations:
+      required: true
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: 调用协议
+      options:
+        - openai
+        - anthropic
+        - responses
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 错误描述与复现步骤
+      placeholder: 请提供请求方式、简短输入、返回的 HTTP 状态码以及错误日志...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 网关日志或错误返回 (请务必脱敏 API Key)
+      render: shell
