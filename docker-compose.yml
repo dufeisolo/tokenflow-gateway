@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  tokenflow-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tokenflow-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro

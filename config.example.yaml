@@ -1,0 +1,32 @@
+# ====================================================================
+# TokenFlow-Gateway 配置文件示例 (config.yaml)
+# ====================================================================
+
+port: 8080
+
+models:
+  # OpenAI 模型示例
+  gpt-4o:
+    upstream_model: "gpt-4o"
+    protocol: "openai"
+    keys:
+      - key: "sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx"
+        base_url: "https://api.openai.com/v1"
+      - key: "sk-proj-yyyyyyyyyyyyyyyyyyyyyyyy"
+        base_url: "https://api.openai.com/v1"
+
+  # DeepSeek 官方模型示例
+  deepseek-chat:
+    upstream_model: "deepseek-chat"
+    protocol: "openai"
+    keys:
+      - key: "sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+        base_url: "https://api.deepseek.com/v1"
+
+  # Anthropic Claude 示例
+  claude-3-5-sonnet:
+    upstream_model: "claude-3-5-sonnet-20241022"
+    protocol: "anthropic"
+    keys:
+      - key: "sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx"
+        base_url: "https://api.anthropic.com/v1"
