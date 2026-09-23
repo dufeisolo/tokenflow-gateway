@@ -1,7 +1,11 @@
 # ⚡ TokenFlow Gateway
 
+<p align="center">
+  <b>English</b> | <a href="README_zh.md">简体中文</a>
+</p>
+
 > **The Hardened Streaming LLM Gateway Core with In-Flight Budget Enforcer & Anti-Ban Routing.**  
-> 专为大模型流式防穿仓、抗风控与零感知换 Key 设计的高性能 Go 单二进制网关内核。
+> A high-performance, single-binary Go gateway engine designed for streaming overdraft protection, zero-downtime key failover, and upstream ban defense.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -12,77 +16,80 @@
 
 ### 🌐 Powered by TokenFlow (Official Backlink)
 
-> 本开源内核由 **[TokenFlow (tokenflow.cool)](https://tokenflow.cool)** 官方团队维护与开源。  
-> **TokenFlow** 是全球领先的二手 Token 与 AI 算力交易平台 —— 卖家闲置额度变现回血，买家低价淘 100% 官方正品算力。  
-> 欢迎访问官方交易市集：👉 **[https://tokenflow.cool](https://tokenflow.cool)**
+> **TokenFlow Gateway** is maintained and open-sourced by the **[TokenFlow (tokenflow.cool)](https://tokenflow.cool)** engineering team.  
+> **TokenFlow** is the world's leading secondary token exchange — where sellers monetize idle subscription quotas and coding plans, and buyers trade 100% genuine upstream AI compute at discounted rates.  
+> 👉 **Official Exchange**: **[https://tokenflow.cool](https://tokenflow.cool)**
 
 ---
 
-## 🎯 为什么需要 TokenFlow Gateway？（解决开源代理的三大暗坑）
+## 🎯 Why TokenFlow Gateway? (Solving 3 Critical Gateway Pitfalls)
 
-市面上的大多数大模型代理网关（如 OneAPI、LiteLLM 等）主要定位于协议转换和普通轮询，在**流式超大长文本**和**多 Key 共享流转**场景中存在 3 个致命缺陷：
+Most open-source LLM proxies (such as OneAPI or LiteLLM) focus on protocol conversion and simple round-robin routing. In real-world multi-tenant production and shared API key pooling, they suffer from 3 critical vulnerabilities:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        传统网关 vs TokenFlow Gateway                   │
+│                   Standard Proxies vs. TokenFlow Gateway               │
 ├──────────────────────────────────┬─────────────────────────────────────┤
-│ 传统网关暗坑                     │ TokenFlow Gateway 解决方案           │
+│ Standard Proxy Pitfalls          │ TokenFlow Gateway Solution          │
 ├──────────────────────────────────┼─────────────────────────────────────┤
-│ 1. 事后计费，流式长文本被白嫖穿仓│ 边传边算 + 触达红线即刻发 TCP RST   │
-│ 2. 上游 Key 限流/失效直接报错返回│ 首字前拦截缓冲 (Pre-TTFT) 秒级换 Key│
-│ 3. 频繁跨 IP 转发触发上游封号   │ 剥离代理特征头 + 原生 SDK 指纹模拟  │
+│ 1. Post-stream billing -> users  │ In-flight incremental metering +    │
+│    can default on huge contexts  │ instant TCP RST on budget limit     │
+│ 2. Upstream 429/401 errors crash │ Pre-TTFT zero-lag handshake buffer  │
+│    client connections directly   │ with sub-50ms atomic key rotation   │
+│ 3. Multi-IP jumping triggers     │ Reverse-proxy header sanitization   │
+│    immediate upstream ban        │ & official SDK fingerprint spoofing │
 └──────────────────────────────────┴─────────────────────────────────────┘
 ```
 
-### 1. 流式 SSE 边传边算与防穿仓硬中断 (In-Flight Stream Enforcer)
-* **痛点**：用户余额仅剩 $0.01，却发送 64k 的长代码让模型流式输出 4k Token（成本 $2+）。普通网关在流结束时才统一扣费，导致平台被严重欠费穿仓。
-* **解法**：逐 Chunk 内存零拷贝解析 Token 增量。一旦累计消耗逼近预设额度，网关**立即向上游大模型发送 TCP RST 硬断流**，停止上游计费，并向下游优雅返回完成标记。
+### 1. In-Flight Stream Enforcer (Anti-Overdraft Circuit Breaker)
+* **The Problem**: A user with only $0.01 balance sends a 64k token prompt and requests a 4k streaming completion ($2+ cost). Traditional proxies only deduct balance *after* the stream ends. If the user disconnects or defaults midway, the platform pays the upstream cost, resulting in severe financial loss ("account overdraft").
+* **The Solution**: Zero-copy incremental token parsing on every SSE chunk using `sync.Pool`. Once accumulated token usage reaches the pre-authorized budget boundary, the gateway **immediately issues a TCP RST to the upstream provider**, cutting off generation charges, while gracefully sending `finish_reason: "length"` to the downstream client.
 
-### 2. 首字前零感知熔断换 Key (Pre-TTFT Zero-Lag Failover)
-* **痛点**：上游 Key 偶发 429（限流）或 401（额度耗尽）。传统网关把报错直接抛给客户端，造成调用中断。
-* **解法**：在首字生成（Time To First Token）之前保持缓冲。一旦握手阶段检测到上游报错，网关在 50ms 内无感轮转下一把健康 Key 重发，**调用方完全无感知**。
+### 2. Pre-TTFT Zero-Lag Failover Engine
+* **The Problem**: When an upstream key hits a rate limit (429) or expires (401), standard proxies pass the error straight to the caller, interrupting the workflow.
+* **The Solution**: The gateway buffers the initial handshake before the **Time To First Token (TTFT)**. If an error is detected during handshake, the gateway atomically swaps to the next healthy candidate in the pool within 50ms and retries. **The client experiences zero downtime or visible failure.** Once the first valid token chunk arrives, the gateway shifts to zero-latency pass-through mode.
 
-### 3. 反风控请求头清洗 (Anti-Ban Header Sanitization)
-* **痛点**：代理层透传的 `X-Forwarded-For`、`CF-Connecting-IP` 暴露了多来源与代理特征，极易被 OpenAI、Anthropic、DeepSeek 等官方风控判定为凭证转售而导致封号。
-* **解法**：物理清洗所有代理特征头，并标准化伪装为官方 SDK 的原生请求指纹。
+### 3. Anti-Ban Header Sanitization & Egress Affinity
+* **The Problem**: Upstream providers (OpenAI, Anthropic, DeepSeek, etc.) run strict anti-abuse heuristics. Forwarding tracing headers like `X-Forwarded-For` or jumping across random IP regions exposes key pooling and commercial reselling, leading to immediate account termination.
+* **The Solution**: Strips all proxy-identifying headers (`X-Forwarded-For`, `CF-Connecting-IP`, `X-Real-IP`, etc.) and standardizes request fingerprints to mirror official native SDK behavior.
 
 ---
 
-## 🏗️ 架构流转原理
+## 🏗️ Architecture & Request Flow
 
 ```text
-【买家/客户端 (Cursor / LangChain / NextChat)】
-                      │
-                      ▼ POST /v1/chat/completions (stream=true)
-         ┌─────────────────────────┐
-         │   TokenFlow Gateway     │
-         │  (单二进制 / 内存 <25MB)│
-         └────────────┬────────────┘
-                      │
-           ┌──────────┴──────────┐
-           ▼ (握手阶段 Pre-TTFT)  ▼ (首字正常)
-      [Key A 挂了/429]      [零延迟直通透传]
-           │                      │
-           ▼ 秒级无感轮转          ▼ 边传边算 (sync.Pool 零拷贝)
-      [换到 Key B 发起]     [若达预算红线 -> TCP RST 熔断上游]
-                      │
-                      ▼
-         【上游厂商官方大模型 API】
+[Client / Buyer (Cursor, LangChain, NextChat, Dify)]
+                       │
+                       ▼ POST /v1/chat/completions (stream=true)
+          ┌─────────────────────────┐
+          │   TokenFlow Gateway     │
+          │ (Single Binary, <25MB)  │
+          └────────────┬────────────┘
+                       │
+            ┌──────────┴──────────┐
+            ▼ (Pre-TTFT Buffer)   ▼ (First Token Valid)
+       [Key A Failed / 429]    [Direct Streaming Pass-through]
+            │                             │
+            ▼ Sub-50ms Rotation           ▼ In-flight Metering (sync.Pool)
+       [Retry with Key B]      [Budget Limit Hit -> Upstream TCP RST]
+                       │
+                       ▼
+          [Upstream AI Model API Provider]
 ```
 
 ---
 
-## 🚀 快速上手 (Quick Start)
+## 🚀 Quick Start
 
-### 方式一：Docker 极速启动 (推荐)
+### Option 1: Docker (Recommended)
 
-1. 克隆代码并进入目录：
+1. Clone the repository:
 ```bash
-git clone https://github.com/tokenflow-ai/gateway.git
-cd gateway
+git clone https://github.com/dufeisolo/tokenflow-gateway.git
+cd tokenflow-gateway
 ```
 
-2. 准备配置文件 `config.yaml`：
+2. Configure `config.yaml`:
 ```yaml
 port: 8080
 models:
@@ -94,76 +101,76 @@ models:
         base_url: "https://api.openai.com/v1"
 ```
 
-3. 一键启动：
+3. Launch with Docker Compose:
 ```bash
 docker compose up -d
 ```
 
-### 方式二：Go 本地编译运行
+### Option 2: Build From Source (Go 1.22+)
 
 ```bash
-# 1. 编译极客单二进制
+# 1. Compile single executable binary
 go build -ldflags="-s -w" -o gateway ./cmd/gateway
 
-# 2. 启动服务
+# 2. Run
 ./gateway config.yaml
 ```
 
 ---
 
-## 💻 接入验证 (CURL 测试)
+## 💻 Verification (OpenAI-Compatible cURL)
 
-标准 100% 兼容 OpenAI 格式：
+TokenFlow Gateway is 100% drop-in compatible with the standard OpenAI API specification:
 
 ```bash
 curl http://127.0.0.1:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "Hello!"}],
+    "messages": [{"role": "user", "content": "Hello TokenFlow!"}],
     "stream": true
   }'
 ```
 
 ---
 
-## 📦 作为 Go 模块引入 (Go Package Usage)
+## 📦 Using as a Go Module
 
-如果您正在开发自己的 Go 大模型平台，可以直接引入本模块的核心包：
+If you are building your own LLM application or platform, import the hardened core packages directly:
 
 ```bash
-go get github.com/tokenflow-ai/gateway
+go get github.com/dufeisolo/tokenflow-gateway
 ```
 
 ```go
 import (
-    "github.com/tokenflow-ai/gateway/pkg/budget"
-    "github.com/tokenflow-ai/gateway/pkg/egress"
-    "github.com/tokenflow-ai/gateway/pkg/failover"
-    "github.com/tokenflow-ai/gateway/pkg/stream"
+    "github.com/dufeisolo/tokenflow-gateway/pkg/budget"
+    "github.com/dufeisolo/tokenflow-gateway/pkg/egress"
+    "github.com/dufeisolo/tokenflow-gateway/pkg/failover"
+    "github.com/dufeisolo/tokenflow-gateway/pkg/stream"
 )
 
-// 1. 首帧读取与安全缓冲
+// 1. Buffer the first stream frame safely
 frame, err := stream.ReadFirstStreamFrame(bufioReader)
 
-// 2. 请求头反风控清洗
-egress.SanitizeHeaders(req.Header, "MyApp/1.0")
+// 2. Sanitize request headers to prevent upstream account bans
+egress.SanitizeHeaders(req.Header, "MyClient/1.0")
 
-// 3. 统计流式 Usage
+// 3. Track in-flight streaming usage
 var usage budget.CallUsage
 usage.ObserveFrame(frame)
 ```
 
 ---
 
-## 🤝 问题反馈与参与贡献 (Issues & Community)
+## 🤝 Community & Support
 
-- 🐛 **Bug 报告与新模型支持**：欢迎提交 [GitHub Issues](https://github.com/tokenflow-ai/gateway/issues)；
-- 💡 **功能建议**：欢迎开启 Pull Request；
-- 💰 **算力交易与闲置回血**：欢迎访问 [TokenFlow 交易平台](https://tokenflow.cool)。
+- 🐛 **Bug Reports & Issues**: [Submit an Issue](https://github.com/dufeisolo/tokenflow-gateway/issues)
+- 💡 **Feature Requests**: Open a Pull Request or Issue
+- 💰 **Token Trading & Monetization**: Visit [TokenFlow Exchange](https://tokenflow.cool)
 
 ---
 
-## 📄 开源许可证
+## 📄 License
 
-本项目基于 [Apache License 2.0](LICENSE) 开源。
+Distributed under the [Apache License 2.0](LICENSE).
